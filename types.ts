@@ -29,10 +29,10 @@ export interface Contestation {
   date: string;
   authority: string;
   notes: string;
-  contactMethod: string;
+  contact_method: string;
   files: ContestationFile[];
-  registeredBy: string;
-  registrationDate: string;
+  registered_by: string;
+  registration_date: string;
   lastEditedBy?: string;
   lastEditedAt?: string;
 }
@@ -43,6 +43,7 @@ export interface Document {
   trarniteNumber: string;
   company: string;
   authority: string;
+  department?: string;
   notificationDate: string;
   daysLimit: number;
   dayType: DayType;

@@ -7,6 +7,9 @@ export const ECUADOR_HOLIDAYS_2025 = [
     '2025-05-23', '2025-08-11', '2025-10-10', '2025-11-02', '2025-11-03', '2025-12-25'
 ];
 
+/**
+ * Formats an ISO date string (YYYY-MM-DD) to the display format (DD/MM/YYYY).
+ */
 export const displayDate = (isoStr: string): string => {
   if (!isoStr) return '';
   const [year, month, day] = isoStr.split('-');
@@ -36,12 +39,12 @@ const MOCK_CONTESTATION: Contestation = {
     date: '2026-01-23',
     authority: 'SRI',
     notes: 'Se envía a SRI Zamora la documentación respaldo para devolución IVA 08-2025',
-    contactMethod: 'Ventanilla Física',
+    contact_method: 'Ventanilla Física',
     files: [
       { id: 'f1', name: 'EVIDENCIA PRESENTACION SOLICITUD IVA 08-25.pdf' }
     ],
-    registeredBy: 'Galo Castrillon',
-    registrationDate: '2026-01-26'
+    registered_by: 'Galo Castrillon',
+    registration_date: '2026-01-26'
 };
 
 const INITIAL_DOCS: Document[] = [
@@ -51,6 +54,7 @@ const INITIAL_DOCS: Document[] = [
     trarniteNumber: '9170120250000492',
     company: 'ECSA',
     authority: 'SRI',
+    department: 'Dirección Nacional de Grandes Contribuyentes',
     notificationDate: '2025-01-17',
     daysLimit: 10,
     dayType: DayType.BUSINESS,

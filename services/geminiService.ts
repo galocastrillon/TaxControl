@@ -3,6 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 export interface AIAnalysisResult {
   authority: string;
+  department: string;
   company: string;
   notificationDate: string;
   emissionDate: string;
@@ -16,72 +17,58 @@ export interface AIAnalysisResult {
 }
 
 /**
- * Analiza el contenido de un documento (PDF o Imagen) utilizando Gemini.
- * @param fileData Cadena base64 del archivo o texto contextual para el análisis.
- * @param mimeType Tipo MIME del archivo (e.g., 'application/pdf', 'image/jpeg'). Si se omite, se trata fileData como texto.
+ * Analyzes document content using Gemini AI.
  */
-// Fix: Added optional mimeType to accommodate text-only re-analysis calls from DocumentDetail.tsx
 export const analyzeDocumentText = async (fileData: string, mimeType?: string): Promise<AIAnalysisResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = 'gemini-3-pro-preview';
 
   const prompt = `
-    Actúa como un Socio de Impuestos Senior y Auditor de Cumplimiento Legal con especialidad en el régimen tributario de Ecuador. 
+    Actúa como un Socio de Impuestos Senior y Auditor de Cumplimiento Legal experto en el régimen tributario de Ecuador. 
     Tu misión es realizar un análisis EXHAUSTIVO, FÁCTICO y REAL del documento adjunto. 
-    Extrae la información basándote ÚNICAMENTE en lo que está escrito en el archivo.
     
-    INSTRUCCIONES CRÍTICAS:
-    1. PROHIBIDO REALIZAR SUPOSICIONES: Si un dato (fecha, número de trámite, plazo) no está explícito, responde "No consta en el documento".
-    2. RIGOR TÉCNICO: El reporte debe ser formal, técnico y ejecutivo, dirigido a directivos y departamentos legales.
-    3. EXTRACCIÓN DE DATOS: Pon especial atención en extraer con exactitud:
-       - Número de Trámite o Expediente.
-       - Autoridad Emisora (SRI, SENAEP, etc.).
-       - Fecha de Notificación (si se menciona) o Fecha de Emisión.
-       - Plazo otorgado para respuesta o cumplimiento (en días).
+    INSTRUCCIONES DE EXTRACCIÓN CRÍTICAS:
+    1. ENTIDAD EMISORA (authority): Identifica la institución principal (ej. Servicio de Rentas Internas, IESS, etc.).
+    2. DEPARTAMENTO/UNIDAD (department): Identifica la unidad específica (ej. Dirección Nacional de Grandes Contribuyentes).
+    3. FECHA DE NOTIFICACIÓN: Busca la fecha legal de notificación. Devuélvela en formato YYYY-MM-DD.
+    4. TRÁMITE (trarniteNumber): Extrae el número de expediente o resolución.
+    5. PLAZO (daysLimit): Identifica el número de días otorgados.
+    6. TIPO DE DÍAS (dayType): Identifica si son "Días hábiles" o "Días calendario".
     
-    ESTRUCTURA OBLIGATORIA PARA 'summaryEs' (Usa estos encabezados A-G):
-    A. ENTIDAD EMISORA Y NATURALEZA: Identificación fáctica del organismo y tipo de acto.
-    B. RESUMEN EJECUTIVO: Síntesis técnica de los hechos descritos.
-    C. OBLIGACIONES Y REQUERIMIENTOS: Detalle de las exigencias imperativas al administrado.
-    D. BASE LEGAL Y ANÁLISIS TÉCNICO: Normativa citada y lógica aplicada por la autoridad.
-    E. CALENDARIO DE PROCEDIMIENTOS: Determinación de hitos y plazos legales encontrados.
-    F. MATRIZ DE RIESGOS: Consecuencias legales o multas mencionadas por incumplimiento.
-    G. IMPACTO ESTRATÉGICO: Valoración profesional del efecto en la operación.
-
-    'summaryCn': Traducción técnica y formal al chino simplificado de la estructura A-G anterior.
-    'activities': Lista de pasos concretos a seguir por el equipo operativo.
+    ESTRUCTURA PARA 'summaryEs':
+    A. ENTIDAD EMISORA Y NATURALEZA
+    B. RESUMEN EJECUTIVO
+    C. OBLIGACIONES Y REQUERIMIENTOS
+    D. BASE LEGAL Y ANÁLISIS TÉCNICO
+    E. CALENDARIO DE PROCEDIMIENTOS
+    F. MATRIZ DE RIESGOS
+    G. IMPACTO ESTRATÉGICO
   `;
 
   try {
     const parts: any[] = [];
     if (mimeType) {
-      // Add multimedia part if mimeType is provided
       parts.push({
-        inlineData: {
-          data: fileData,
-          mimeType: mimeType
-        }
+        inlineData: { data: fileData, mimeType: mimeType }
       });
       parts.push({ text: prompt });
     } else {
-      // Handle text-only prompts for re-analysis or summary refinement
-      parts.push({ text: `${prompt}\n\nInformación de contexto adicional para análisis:\n${fileData}` });
+      parts.push({ text: `${prompt}\n\nContext:\n${fileData}` });
     }
 
     const response = await ai.models.generateContent({
       model: model,
-      contents: {
-        parts: parts
-      },
+      contents: { parts: parts },
       config: { 
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             authority: { type: Type.STRING },
+            department: { type: Type.STRING },
             company: { type: Type.STRING },
-            notificationDate: { type: Type.STRING, description: "Formato YYYY-MM-DD" },
-            emissionDate: { type: Type.STRING, description: "Formato YYYY-MM-DD" },
+            notificationDate: { type: Type.STRING },
+            emissionDate: { type: Type.STRING },
             daysLimit: { type: Type.NUMBER },
             dayType: { type: Type.STRING },
             trarniteNumber: { type: Type.STRING },
@@ -93,7 +80,7 @@ export const analyzeDocumentText = async (fileData: string, mimeType?: string): 
               items: { type: Type.STRING }
             }
           },
-          required: ["authority", "summaryEs", "summaryCn", "trarniteNumber"]
+          required: ["authority", "department", "summaryEs", "summaryCn", "trarniteNumber"]
         }
       }
     });
@@ -101,11 +88,12 @@ export const analyzeDocumentText = async (fileData: string, mimeType?: string): 
     if (response.text) {
       return JSON.parse(response.text.trim()) as AIAnalysisResult;
     }
-    throw new Error("Sin respuesta de IA");
+    throw new Error("Sin respuesta");
   } catch (error) {
-    console.error("Error en análisis IA:", error);
+    console.error("Error AI:", error);
     return {
       authority: "No identificado",
+      department: "No identificado",
       company: "ECSA",
       notificationDate: "",
       emissionDate: "",
@@ -113,8 +101,8 @@ export const analyzeDocumentText = async (fileData: string, mimeType?: string): 
       dayType: "Días hábiles",
       trarniteNumber: "No identificado",
       title: "Análisis fallido",
-      summaryEs: "El análisis no pudo completarse. Por favor, revise el documento manualmente para extraer los hechos fácticos.",
-      summaryCn: "分析未能完成。请手动检查文件以提取事实信息。",
+      summaryEs: "Error al analizar.",
+      summaryCn: "解析错误",
       activities: []
     };
   }
