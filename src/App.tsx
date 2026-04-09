@@ -4,6 +4,6 @@ export default function App() {
       <h1 style={{ fontSize: 32, color: 'black' }}>
         ✅ REACT ESTÁ FUNCIONANDO
       </h1>
-    </div>
+    </div> 
   );
 }
