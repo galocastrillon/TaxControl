@@ -4,17 +4,68 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tax Control</title>
+    <title>TaxControl</title>
 
+    <!-- Google Font: Inter -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
     />
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Tailwind Config -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif']
+            }
+          }
+        }
+      };
+    </script>
   </head>
 
-  <body>
-    <div id="root"></div>
+  <body class="bg-gray-50 text-gray-900 font-sans">
+    <!-- React Mount Point -->
+    <div id="app" class="min-h-screen"></div>
 
-    <script type="module" src="/src/main.tsx"></script>
+    <!-- React 18 CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Application Script -->
+    <script>
+      const { createElement: h } = React;
+      const { createRoot } = ReactDOM;
+
+      function App() {
+        return h(
+          'div',
+          { className: 'p-8 max-w-4xl mx-auto' },
+          h(
+            'h1',
+            { className: 'text-3xl font-bold text-green-600 flex items-center gap-2' },
+            '✅ TaxControl funcionando correctamente'
+          ),
+          h(
+            'p',
+            { className: 'mt-4 text-gray-700' },
+            'Esta es la versión original, sin build, sin Vite y sin React compilado.'
+          ),
+          h(
+            'div',
+            { className: 'mt-6 p-4 bg-white rounded shadow' },
+            'Aquí puedes empezar a reconstruir toda tu lógica original.'
+          )
+        );
+      }
+
+      const root = createRoot(document.getElementById('app'));
+      root.render(h(App));
+    </script>
   </body>
 </html>
