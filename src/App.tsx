@@ -1,9 +1,10 @@
+
 export default function App() {
   return (
-    <div style={{ padding: 40 }}>
-      <h1 style={{ fontSize: 32, color: 'black' }}>
-        ✅ REACT ESTÁ FUNCIONANDO
+    <div className="p-10">
+      <h1 className="text-3xl font-bold text-gray-900">
+        ✅ TaxControl funciona correctamente
       </h1>
-    </div> 
+    </div>
   );
 }
