@@ -3,10 +3,11 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { STATS_CONFIG, getDocuments, displayDate } from '../constants';
 import { PieChart, Pie, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { DocStatus, Document } from '../types';
-import { Calendar, Filter, FileDown, Clock, AlertTriangle, ArrowRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Calendar, Filter, Clock, AlertTriangle, ArrowRight, FileText, ChevronRight } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [lang, setLang] = useState<'es' | 'cn'>(() => (localStorage.getItem('app_lang') as 'es' | 'cn') || 'es');
   
   useEffect(() => {
@@ -17,7 +18,15 @@ const Dashboard: React.FC = () => {
     return () => window.removeEventListener('languageChange', handleLangChange);
   }, []);
 
-  const documents = useMemo(() => getDocuments(), []);
+  const [documents, setDocuments] = useState<Document[]>([]);
+
+  useEffect(() => {
+    const fetchDocs = async () => {
+      const docs = await getDocuments();
+      setDocuments(docs);
+    };
+    fetchDocs();
+  }, []);
   
   const translations = {
     es: {
@@ -41,7 +50,12 @@ const Dashboard: React.FC = () => {
       noVencidos: 'No hay documentos vencidos.',
       no7: 'No hay vencimientos en 7 días.',
       no15: 'No hay vencimientos de 8 a 15 días.',
-      viewMore: 'Ver {n} más'
+      viewMore: 'Ver {n} más',
+      recentDocs: 'Últimos Documentos Ingresados',
+      colName: 'NOMBRE DOCUMENTO / TRÁMITE',
+      colAuth: 'AUTORIDAD',
+      colDue: 'FECHA VENC.',
+      colStatus: 'ESTADO'
     },
     cn: {
       title: '税务控制仪表板',
@@ -64,7 +78,12 @@ const Dashboard: React.FC = () => {
       noVencidos: '没有过期的文件。',
       no7: '7天内没有到期文件。',
       no15: '8到15天内没有到期文件。',
-      viewMore: '查看更多 {n}'
+      viewMore: '查看更多 {n}',
+      recentDocs: '最近输入的文档',
+      colName: '文件名 / 程序编号',
+      colAuth: '机构',
+      colDue: '到期日期',
+      colStatus: '状态'
     }
   };
 
@@ -80,6 +99,12 @@ const Dashboard: React.FC = () => {
     }).length;
 
     return { total, progress: inProgress, upcoming, overdue };
+  }, [documents]);
+
+  const last5Docs = useMemo(() => {
+    return [...documents]
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, 5);
   }, [documents]);
 
   const upcoming7Docs = useMemo(() => {
@@ -115,16 +140,37 @@ const Dashboard: React.FC = () => {
     ].filter(item => item.value > 0);
   }, [documents, lang]);
 
+  const getStatusColor = (status: DocStatus) => {
+    switch (status) {
+      case DocStatus.INITIALIZED: return 'bg-blue-100 text-blue-800';
+      case DocStatus.IN_PROGRESS: return 'bg-purple-100 text-purple-800';
+      case DocStatus.COMPLETED: return 'bg-green-100 text-green-800';
+      case DocStatus.OVERDUE: return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusLabel = (status: DocStatus) => {
+    if (lang === 'es') return status.toUpperCase();
+    switch (status) {
+      case DocStatus.INITIALIZED: return '已初始化';
+      case DocStatus.IN_PROGRESS: return '进行中';
+      case DocStatus.COMPLETED: return '已完成';
+      case DocStatus.OVERDUE: return '已逾期';
+      default: return status;
+    }
+  };
+
   const RADIAN = Math.PI / 180;
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
     const y = cy + radius * Math.sin(-midAngle * RADIAN);
-    return (
+    return (percent > 0.05) ? (
       <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" className="text-[10px] font-bold">
         {`${(percent * 100).toFixed(0)}%`}
       </text>
-    );
+    ) : null;
   };
 
   return (
@@ -198,6 +244,53 @@ const Dashboard: React.FC = () => {
             <button className="w-full mt-6 flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-xl hover:bg-blue-600 font-bold transition-all shadow-lg shadow-blue-200 active:scale-95">
                 <Filter className="w-4 h-4" /> {t.updateReport}
             </button>
+        </div>
+      </div>
+
+      {/* SECCIÓN DE ÚLTIMOS DOCUMENTOS INGRESADOS */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+           <h3 className="text-lg font-bold text-gray-900 uppercase tracking-tight">{t.recentDocs}</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-gray-50/50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+              <tr>
+                <th className="px-8 py-4">{t.colName}</th>
+                <th className="px-8 py-4">{t.colAuth}</th>
+                <th className="px-8 py-4">{t.colDue}</th>
+                <th className="px-8 py-4">{t.colStatus}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {last5Docs.map((doc) => (
+                <tr key={doc.id} className="hover:bg-gray-50/50 transition-colors group">
+                  <td className="px-8 py-5">
+                    <div className="flex flex-col">
+                      <Link 
+                        to={`/documents/${doc.id}`} 
+                        className="text-sm font-bold text-gray-900 hover:text-primary transition-colors line-clamp-1"
+                      >
+                        {doc.title}
+                      </Link>
+                      <span className="text-[11px] font-mono text-gray-400 mt-1">#{doc.trarniteNumber}</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className="text-sm font-semibold text-gray-600 uppercase tracking-tight">{doc.authority}</span>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className="text-sm font-bold text-gray-800">{displayDate(doc.dueDate)}</span>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black tracking-wider ${getStatusColor(doc.status)}`}>
+                      {getStatusLabel(doc.status)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 

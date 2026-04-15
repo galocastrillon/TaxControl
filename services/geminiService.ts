@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
 export interface AIAnalysisResult {
@@ -23,7 +22,7 @@ export const analyzeDocumentText = async (fileData: string, mimeType?: string): 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = 'gemini-3-pro-preview';
 
-  const prompt = `
+  const systemInstruction = `
     Actúa como un Socio de Impuestos Senior y Auditor de Cumplimiento Legal experto en el régimen tributario de Ecuador. 
     Tu misión es realizar un análisis EXHAUSTIVO, FÁCTICO y REAL del documento adjunto. 
     
@@ -51,15 +50,16 @@ export const analyzeDocumentText = async (fileData: string, mimeType?: string): 
       parts.push({
         inlineData: { data: fileData, mimeType: mimeType }
       });
-      parts.push({ text: prompt });
     } else {
-      parts.push({ text: `${prompt}\n\nContext:\n${fileData}` });
+      parts.push({ text: `Context:\n${fileData}` });
     }
 
+    // Using ai.models.generateContent with systemInstruction in config
     const response = await ai.models.generateContent({
       model: model,
       contents: { parts: parts },
       config: { 
+        systemInstruction: systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -85,6 +85,7 @@ export const analyzeDocumentText = async (fileData: string, mimeType?: string): 
       }
     });
 
+    // Access .text property directly (not as a method)
     if (response.text) {
       return JSON.parse(response.text.trim()) as AIAnalysisResult;
     }

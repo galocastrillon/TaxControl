@@ -6,9 +6,12 @@ import {
   UserCheck, Edit3, FileSpreadsheet, Paperclip, X, Search, Link as LinkIcon,
   CalendarCheck,
   Sparkles,
-  Languages
+  Languages,
+  MailCheck,
+  CheckCircle2
 } from 'lucide-react';
 import { analyzeDocumentText } from '../services/geminiService';
+import { sendNewDocumentNotification, NotificationResponse } from '../services/notificationService';
 import { DayType, DocStatus, Document, ContestationFile } from '../types';
 import { useNavigate, useParams } from 'react-router-dom';
 import { saveDocument, updateDocument, isEcuadorBusinessDay, getDocuments, displayDate, CURRENT_USER } from '../constants';
@@ -53,10 +56,6 @@ const DocumentUpload: React.FC = () => {
       save: 'Guardar',
       update: 'Actualizar',
       alertRequired: 'Error: Los campos marcados con (*) son obligatorios para guardar.',
-      auditCreated: 'Cargado por',
-      auditEdited: 'Última edición',
-      addAttachments: 'Añadir Adjuntos (XLS, DOC, PDF, ZIP)',
-      noAttachments: 'No hay archivos adjuntos.',
       relatedDoc: 'RELACIONAR CON DOCUMENTO ANTERIOR',
       searchDoc: 'Buscar trámite anterior...'
     },
@@ -83,10 +82,6 @@ const DocumentUpload: React.FC = () => {
       save: '保存',
       update: '更新',
       alertRequired: '错误：带 (*) 的字段是必填项。',
-      auditCreated: '上传者',
-      auditEdited: '最后编辑',
-      addAttachments: '添加附件 (XLS, DOC, PDF, ZIP)',
-      noAttachments: '没有附件。',
       relatedDoc: '关联之前的文档',
       searchDoc: '搜索之前的程序...'
     }
@@ -95,7 +90,11 @@ const DocumentUpload: React.FC = () => {
   const t = translations[lang];
 
   const [file, setFile] = useState<File | null>(null);
+  const [fileContentUrl, setFileContentUrl] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [notificationToast, setNotificationToast] = useState<NotificationResponse | null>(null);
+
   const [company, setCompany] = useState('ECSA');
   const [authority, setAuthority] = useState('');
   const [department, setDepartment] = useState('');
@@ -111,17 +110,18 @@ const DocumentUpload: React.FC = () => {
   const [dayType, setDayType] = useState<DayType>(DayType.BUSINESS);
   const [dueDate, setDueDate] = useState('');
   
-  const [auditInfo, setAuditInfo] = useState<{
-    createdBy?: string;
-    createdAt?: string;
-    lastEditedBy?: string;
-    lastEditedAt?: string;
-  }>({});
-
-  const allPreviousDocs = useMemo(() => getDocuments(), []);
+  const [allPreviousDocs, setAllPreviousDocs] = useState<Document[]>([]);
 
   useEffect(() => {
-    if (isEditing) {
+    const fetchPrevDocs = async () => {
+      const docs = await getDocuments();
+      setAllPreviousDocs(docs);
+    };
+    fetchPrevDocs();
+  }, []);
+
+  useEffect(() => {
+    if (isEditing && allPreviousDocs.length > 0) {
       const existingDoc = allPreviousDocs.find(d => d.id === id);
       if (existingDoc) {
         setCompany(existingDoc.company);
@@ -129,12 +129,10 @@ const DocumentUpload: React.FC = () => {
         setDepartment(existingDoc.department || '');
         setTrarniteNumber(existingDoc.trarniteNumber);
         setTitle(existingDoc.title);
-        
         if (existingDoc.relatedDoc) {
           const rel = allPreviousDocs.find(d => d.id === existingDoc.relatedDoc);
           setRelatedDocSearch(rel ? rel.title : '');
         }
-
         setNotificationDate(existingDoc.notificationDate);
         setCreatedAtDate(existingDoc.createdAt || new Date().toISOString().split('T')[0]);
         setDaysLimit(existingDoc.daysLimit);
@@ -142,12 +140,7 @@ const DocumentUpload: React.FC = () => {
         setSummaryEs(existingDoc.summaryEs);
         setSummaryCn(existingDoc.summaryCn);
         setAttachments(existingDoc.attachments || []);
-        setAuditInfo({
-            createdBy: existingDoc.createdBy,
-            createdAt: existingDoc.createdAt,
-            lastEditedBy: existingDoc.lastEditedBy,
-            lastEditedAt: existingDoc.lastEditedAt
-        });
+        setFileContentUrl(existingDoc.fileUrl || '');
       }
     }
   }, [id, isEditing, allPreviousDocs]);
@@ -172,11 +165,11 @@ const DocumentUpload: React.FC = () => {
     }
   }, [notificationDate, daysLimit, dayType]);
 
-  const fileToBase64 = (file: File): Promise<string> => {
+  const fileToDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
-      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onload = () => resolve(reader.result as string);
       reader.onerror = reject;
     });
   };
@@ -185,14 +178,16 @@ const DocumentUpload: React.FC = () => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
-      analyzeFile(selectedFile);
+      const dataUrl = await fileToDataUrl(selectedFile);
+      setFileContentUrl(dataUrl);
+      analyzeFile(selectedFile, dataUrl);
     }
   };
 
-  const analyzeFile = async (selectedFile: File) => {
+  const analyzeFile = async (selectedFile: File, dataUrl: string) => {
     setIsAnalyzing(true);
     try {
-        const base64Data = await fileToBase64(selectedFile);
+        const base64Data = dataUrl.split(',')[1];
         const result = await analyzeDocumentText(base64Data, selectedFile.type);
         setAuthority(result.authority || '');
         setDepartment(result.department || '');
@@ -205,10 +200,12 @@ const DocumentUpload: React.FC = () => {
     } catch (error) { console.error(error); } finally { setIsAnalyzing(false); }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!company || !authority.trim() || !trarniteNumber.trim() || !title.trim() || !notificationDate || !summaryEs.trim() || !summaryCn.trim()) {
       return alert(t.alertRequired);
     }
+
+    setIsSubmitting(true);
 
     let finalRelatedId = '';
     if (relatedDocSearch.trim()) {
@@ -224,6 +221,7 @@ const DocumentUpload: React.FC = () => {
         status: isEditing ? (existingDoc?.status || DocStatus.INITIALIZED) : DocStatus.INITIALIZED,
         summaryEs, summaryCn, relatedDoc: finalRelatedId,
         fileName: file?.name || existingDoc?.fileName || 'document.pdf',
+        fileUrl: fileContentUrl || existingDoc?.fileUrl,
         createdBy: isEditing ? (existingDoc?.createdBy || CURRENT_USER.name) : CURRENT_USER.name,
         createdAt: createdAtDate,
         lastEditedBy: isEditing ? CURRENT_USER.name : undefined,
@@ -231,13 +229,39 @@ const DocumentUpload: React.FC = () => {
         attachments,
         contestations: existingDoc?.contestations || []
     };
-    if (isEditing) updateDocument(docData);
-    else saveDocument(docData);
+    
+    if (isEditing) {
+      await updateDocument(docData);
+    } else {
+      await saveDocument(docData);
+      const notifyResult = await sendNewDocumentNotification(docData);
+      if (notifyResult) {
+        setNotificationToast(notifyResult);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
+    
+    setIsSubmitting(false);
     navigate(`/documents/${docData.id}`);
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto relative">
+      {notificationToast && (
+        <div className="fixed top-20 right-8 z-[100] animate-in slide-in-from-right-8 fade-in duration-500">
+           <div className="bg-white border-l-4 border-secondary shadow-2xl rounded-xl p-5 flex items-center gap-4 min-w-[320px]">
+              <div className="bg-secondary/10 p-2 rounded-full">
+                <MailCheck className="w-6 h-6 text-secondary" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">{notificationToast.message}</p>
+                <p className="text-[10px] font-medium text-gray-500 uppercase tracking-tighter">Destinatario: {notificationToast.recipient}</p>
+              </div>
+              <CheckCircle2 className="w-5 h-5 text-secondary ml-auto" />
+           </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-4 mb-8">
           <button onClick={() => navigate('/documents')} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><ArrowLeft className="w-6 h-6 text-gray-500" /></button>
           <h1 className="text-2xl font-bold text-gray-900">{isEditing ? t.editTitle : t.newTitle}</h1>
@@ -339,8 +363,11 @@ const DocumentUpload: React.FC = () => {
         </div>
 
         <div className="bg-gray-50 px-8 py-6 border-t border-gray-200 flex justify-end gap-4">
-            <button className="text-gray-500 font-medium" onClick={() => navigate('/documents')}>{t.cancel}</button>
-            <button onClick={handleSubmit} className="bg-primary text-white px-10 py-2.5 rounded-xl font-bold hover:bg-blue-700 shadow-lg">{isEditing ? t.update : t.save}</button>
+            <button className="text-gray-500 font-medium" disabled={isSubmitting} onClick={() => navigate('/documents')}>{t.cancel}</button>
+            <button onClick={handleSubmit} disabled={isSubmitting} className="bg-primary text-white px-10 py-2.5 rounded-xl font-bold hover:bg-blue-700 shadow-lg flex items-center gap-2">
+               {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+               {isEditing ? t.update : t.save}
+            </button>
         </div>
       </div>
     </div>

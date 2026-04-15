@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getDocuments, displayDate, updateDocument } from '../constants';
+import { getDocuments, displayDate, updateDocument, deleteDocument } from '../constants';
 import { DocStatus, Document } from '../types';
 import { Search, Plus, MoreHorizontal, Eye, Edit, Trash2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -23,7 +23,11 @@ const DocumentList: React.FC = () => {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setDocuments(getDocuments());
+    const fetchDocs = async () => {
+      const docs = await getDocuments();
+      setDocuments(docs);
+    };
+    fetchDocs();
   }, []);
 
   useEffect(() => {
@@ -54,7 +58,7 @@ const DocumentList: React.FC = () => {
     cn: {
       title: '文档管理',
       subtitle: '搜索、过滤和管理您的所有税务文件。',
-      searchPlaceholder: '按标题、程序或机构搜索...',
+      searchPlaceholder: '按标题、程序 or 机构搜索...',
       newDoc: '新文档',
       colTitle: '文件名 / 程序编号',
       colAuth: '机构',
@@ -95,13 +99,12 @@ const DocumentList: React.FC = () => {
     setOpenMenuId(openMenuId === id ? null : id);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const confirmMsg = lang === 'es' ? '¿Está seguro de que desea eliminar este documento?' : '您确定要删除此文档吗？';
     if (window.confirm(confirmMsg)) {
-      const allDocs = getDocuments();
-      const filteredDocs = allDocs.filter(d => d.id !== id);
-      localStorage.setItem('tax_control_docs', JSON.stringify(filteredDocs));
-      setDocuments(filteredDocs);
+      await deleteDocument(id);
+      const docs = await getDocuments();
+      setDocuments(docs);
       setOpenMenuId(null);
     }
   };
@@ -154,7 +157,12 @@ const DocumentList: React.FC = () => {
                 <tr key={doc.id} className="hover:bg-gray-50/50 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-gray-900 line-clamp-1 group-hover:text-primary transition-colors">{doc.title}</span>
+                        <Link 
+                          to={`/documents/${doc.id}`}
+                          className="text-sm font-semibold text-gray-900 line-clamp-1 hover:text-primary transition-colors"
+                        >
+                          {doc.title}
+                        </Link>
                         <span className="text-[11px] text-gray-400 mt-1 font-mono">#{doc.trarniteNumber}</span>
                     </div>
                   </td>

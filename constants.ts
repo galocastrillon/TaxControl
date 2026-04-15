@@ -26,13 +26,33 @@ export const isEcuadorBusinessDay = (date: Date): boolean => {
     return !ECUADOR_HOLIDAYS_2025.includes(dateStr);
 };
 
-export const CURRENT_USER: User = {
+// Datos de usuario por defecto
+const DEFAULT_USER: User = {
   id: 'u1',
   name: 'Galo Castrillon',
   email: 'Impuestos@corriente.com.ec',
   role: UserRole.ADMIN,
   avatar: 'https://picsum.photos/id/1005/150/150'
 };
+
+/**
+ * Obtiene el usuario actual desde el almacenamiento local o devuelve el predeterminado.
+ */
+export const getCurrentUser = (): User => {
+  const stored = localStorage.getItem('tax_control_user');
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      return DEFAULT_USER;
+    }
+  }
+  return DEFAULT_USER;
+};
+
+// Exportamos CURRENT_USER como una referencia inicial, 
+// pero los componentes deben usar getCurrentUser() para obtener datos frescos.
+export const CURRENT_USER = getCurrentUser();
 
 const MOCK_CONTESTATION: Contestation = {
     id: 'c1',
@@ -63,33 +83,58 @@ const INITIAL_DOCS: Document[] = [
     summaryEs: 'Solicitud de devolución del Impuesto al Valor Agregado (IVA) presentada por ECUACORRIENTE S.A.',
     summaryCn: 'ECUACORRIENTE S.A. 提交的增值税 (IVA) 退税申请',
     fileName: '20250117_Providencia_Administrativa_9170120250000492.pdf',
+    fileUrl: 'data:application/pdf;base64,JVBERi0xLjQKJcOkw7zDtsOfCjIgMCBvYmoKPDwvTGVuZ3RoIDMgMCBSL0ZpbHRlci9GbGF0ZURlY29kZT4+CnN0cmVhbQp4nCtUMNAzUCtUMFQzVDAwVSuwtAQARZADCAplbmRzdHJlYW0KMyAwIG9iago0MgplbmRvYmoKMSAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1s0IDAgUl0+PgplbmRvYmoKNCAwIG9iago8PC9UeXBlL1BhZ2UvUGFyZW50IDEgMCBSL1Jlc291cmNlczw8L0ZvbnQ8PC9GMSA1IDAgUj4+Pj4vTWVkaWFCb3hbMCAwIDU5NSA4NDJdL0NvbnRlbnRzIDIgMCBSPj4KZW5kb2JqCjUgMCBvYmoKPDwvVHlwZS9Gb250L1N1YnR5cGUvVHJ1ZVR5cGUvQmFzZUZvbnQvSGVsdmV0aWNhL0VuY29kaW5nL1dpbkFuc2lFbmNvZGluZz4+CmxlbmRvYmoKNiAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMSAwIFI+PgplbmRvYmoKNyAwIG9iago8PC9Qcm9kdWNlcihRVFBkZiAxLjEpL0NyZWF0aW9uRGF0ZShEOjIwMjUwMTI0MTUwMDAwKzAwJzAwJyk+PgplbmRvYmoKeHJlZgowIDgKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMTU4IDAwMDAwIG4gCjAwMDAwMDAwMTkgMDAwMDAgbiAKMDAwMDAwMDExMiAwMDAwMCBuIAowMDAwMDAwMjE0IDAwMDAwIG4gCjAwMDAwMDAzMTEgMDAwMDAgbiAKMDAwMDAwMDQwMyAwMDAwMCBuIAowMDAwMDAwNDUxIDAwMDAwIG4gCnRyYWlsZXIKPDwvU2l6ZSA4L1Jvb3QgNiAwIFIvSW5mbyA3IDAgUj4+CnN0YXJ0eHJlZgowCiUlRU9GCg==',
     createdBy: 'Galo Castrillon',
     createdAt: '2025-01-17',
     contestations: [MOCK_CONTESTATION]
   }
 ];
 
-export const getDocuments = (): Document[] => {
-    const stored = localStorage.getItem('tax_control_docs');
-    if (!stored) {
-        localStorage.setItem('tax_control_docs', JSON.stringify(INITIAL_DOCS));
-        return INITIAL_DOCS;
+export const getDocuments = async (): Promise<Document[]> => {
+    try {
+        const response = await fetch('/api/documents');
+        if (!response.ok) throw new Error('Failed to fetch documents');
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching documents:', error);
+        return [];
     }
-    return JSON.parse(stored);
 };
 
-export const saveDocument = (doc: Document) => {
-    const docs = getDocuments();
-    docs.push(doc);
-    localStorage.setItem('tax_control_docs', JSON.stringify(docs));
+export const saveDocument = async (doc: Document) => {
+    try {
+        const response = await fetch('/api/documents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(doc)
+        });
+        if (!response.ok) throw new Error('Failed to save document');
+    } catch (error) {
+        console.error('Error saving document:', error);
+    }
 };
 
-export const updateDocument = (updatedDoc: Document) => {
-    const docs = getDocuments();
-    const index = docs.findIndex(d => d.id === updatedDoc.id);
-    if (index !== -1) {
-        docs[index] = updatedDoc;
-        localStorage.setItem('tax_control_docs', JSON.stringify(docs));
+export const updateDocument = async (updatedDoc: Document) => {
+    try {
+        const response = await fetch(`/api/documents/${updatedDoc.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedDoc)
+        });
+        if (!response.ok) throw new Error('Failed to update document');
+    } catch (error) {
+        console.error('Error updating document:', error);
+    }
+};
+
+export const deleteDocument = async (id: string) => {
+    try {
+        const response = await fetch(`/api/documents/${id}`, {
+            method: 'DELETE'
+        });
+        if (!response.ok) throw new Error('Failed to delete document');
+    } catch (error) {
+        console.error('Error deleting document:', error);
     }
 };
 

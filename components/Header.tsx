@@ -1,27 +1,43 @@
 
 import React, { useState, useEffect } from 'react';
 import { Globe, Search, LogOut, User, Check } from 'lucide-react';
-import { CURRENT_USER } from '../constants';
+import { Link } from 'react-router-dom';
+import { getCurrentUser } from '../constants';
 
 const Header: React.FC = () => {
   const [lang, setLang] = useState<'es' | 'cn'>(() => {
     return (localStorage.getItem('app_lang') as 'es' | 'cn') || 'es';
   });
+  const [user, setUser] = useState(getCurrentUser());
   const [showLangMenu, setShowLangMenu] = useState(false);
+
+  useEffect(() => {
+    const handleLangChange = () => {
+      setLang((localStorage.getItem('app_lang') as 'es' | 'cn') || 'es');
+    };
+    
+    const handleUserUpdate = () => {
+      setUser(getCurrentUser());
+    };
+
+    window.addEventListener('languageChange', handleLangChange);
+    window.addEventListener('userUpdate', handleUserUpdate);
+    
+    return () => {
+      window.removeEventListener('languageChange', handleLangChange);
+      window.removeEventListener('userUpdate', handleUserUpdate);
+    };
+  }, []);
 
   const toggleLanguage = (newLang: 'es' | 'cn') => {
     setLang(newLang);
     localStorage.setItem('app_lang', newLang);
     setShowLangMenu(false);
-    // Disparamos un evento para que otros componentes reaccionen si es necesario
     window.dispatchEvent(new Event('languageChange'));
-    // En una app real usaríamos un context, aquí forzamos un refresh visual si fuera necesario
-    // window.location.reload(); 
   };
 
   return (
     <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 fixed top-0 right-0 left-64 z-40">
-      {/* Breadcrumbs / Search */}
       <div className="flex items-center flex-1">
         <div className="relative w-96">
           <input 
@@ -33,9 +49,7 @@ const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Right Actions */}
       <div className="flex items-center gap-6">
-        {/* Language Selector */}
         <div className="relative">
           <button 
             onClick={() => setShowLangMenu(!showLangMenu)}
@@ -65,26 +79,27 @@ const Header: React.FC = () => {
           )}
         </div>
 
-        {/* User Profile */}
         <div className="flex items-center gap-3 pl-6 border-l border-gray-200">
             <div className="text-right hidden sm:block">
-                <p className="text-sm font-semibold text-gray-900">{CURRENT_USER.name}</p>
-                <p className="text-xs text-gray-500">{lang === 'es' ? CURRENT_USER.role : '管理员'}</p>
+                <p className="text-sm font-semibold text-gray-900">{user.name}</p>
+                <p className="text-xs text-gray-500 font-medium uppercase tracking-tighter">
+                  {lang === 'es' ? user.role : (user.role === 'Admin' ? '管理员' : '操作员')}
+                </p>
             </div>
             <div className="relative group">
                 <img 
-                    src={CURRENT_USER.avatar} 
+                    src={user.avatar} 
                     alt="Profile" 
                     className="w-10 h-10 rounded-full object-cover border-2 border-gray-100 cursor-pointer"
                 />
-                {/* Dropdown */}
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform origin-top-right border border-gray-100">
-                    <a href="#" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                        <User className="w-4 h-4" /> {lang === 'es' ? 'Perfil' : '个人资料'}
-                    </a>
-                    <a href="#" className="block px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform origin-top-right border border-gray-100 z-50">
+                    <Link to="/settings" className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors">
+                        <User className="w-4 h-4 text-gray-400" /> {lang === 'es' ? 'Perfil' : '个人资料'}
+                    </Link>
+                    <div className="h-px bg-gray-100 my-1 mx-2"></div>
+                    <Link to="/login" className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors">
                         <LogOut className="w-4 h-4" /> {lang === 'es' ? 'Cerrar Sesión' : '登出'}
-                    </a>
+                    </Link>
                 </div>
             </div>
         </div>
