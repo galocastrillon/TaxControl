@@ -24,6 +24,7 @@ CREATE TABLE documents (
     trarnite_number VARCHAR(100) UNIQUE NOT NULL,
     company_id VARCHAR(50) REFERENCES companies(id),
     authority VARCHAR(255) NOT NULL,
+    department VARCHAR(255),
     notification_date DATE NOT NULL,
     days_limit INTEGER DEFAULT 0,
     day_type VARCHAR(20) CHECK (day_type IN ('Días hábiles', 'Días calendario')),
@@ -80,6 +81,16 @@ CREATE TABLE activities (
     priority VARCHAR(10) DEFAULT 'Medium' CHECK (priority IN ('High', 'Medium', 'Low')),
     completed_by VARCHAR(50) REFERENCES users(id),
     completed_at TIMESTAMP
+);
+
+-- Usuario administrador por defecto (contraseña: Password123, cambiar tras primer acceso)
+-- La contraseña se almacena como SHA256(id || password) para coincidir con la lógica del servidor
+INSERT INTO users (id, name, email, password_hash, role) VALUES (
+  'u1',
+  'Administrador',
+  'impuestos@corriente.com.ec',
+  SHA2(CONCAT('u1', 'Password123'), 256),
+  'Admin'
 );
 
 -- Índices para optimizar búsquedas

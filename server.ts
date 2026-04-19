@@ -3,26 +3,34 @@ import mysql from 'mysql2/promise';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI, Type } from '@google/genai';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// In-memory session store: token -> { userId, role }
+const sessions = new Map<string, { userId: string; role: string }>();
+
+function hashPassword(id: string, password: string): string {
+  return crypto.createHash('sha256').update(id + password).digest('hex');
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: '20mb' }));
 
   // Database Connection Pool
   let pool: mysql.Pool | null = null;
   let useMemoryFallback = false;
-  
-  // Initial data for fallback
+
   let memoryDocs: any[] = [
     {
       id: 'd1',
@@ -44,11 +52,22 @@ async function startServer() {
     }
   ];
 
+  // Default admin for memory fallback — password: Password123
+  const memoryUsers = [
+    {
+      id: 'u1',
+      name: 'Administrador',
+      email: 'impuestos@corriente.com.ec',
+      password_hash: hashPassword('u1', 'Password123'),
+      role: 'Admin'
+    }
+  ];
+
   const mapDocToFrontend = (row: any) => ({
     id: row.id,
     title: row.title,
     trarniteNumber: row.trarnite_number,
-    company: row.company || 'ECSA', // Fallback if join missing
+    company: row.company || 'ECSA',
     authority: row.authority,
     department: row.department || 'General',
     notificationDate: row.notification_date,
@@ -84,12 +103,145 @@ async function startServer() {
     pool = null;
   }
 
-  // API Routes
+  // Auth middleware — protects all /api/* except /api/health and /api/auth/*
+  const authMiddleware = (req: any, res: any, next: any) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token || !sessions.has(token)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    req.user = sessions.get(token);
+    next();
+  };
+
+  // --- Public routes ---
+
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', database: useMemoryFallback ? 'memory' : 'mariadb' });
   });
 
-  app.get('/api/documents', async (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email y contraseña requeridos' });
+    }
+
+    try {
+      let user: any = null;
+
+      if (useMemoryFallback) {
+        const candidate = memoryUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (candidate && candidate.password_hash === hashPassword(candidate.id, password)) {
+          user = candidate;
+        }
+      } else {
+        const [rows]: any = await pool!.query(
+          'SELECT * FROM users WHERE LOWER(email) = LOWER(?)',
+          [email]
+        );
+        if (rows.length > 0) {
+          const candidate = rows[0];
+          if (hashPassword(candidate.id, password) === candidate.password_hash) {
+            user = candidate;
+          }
+        }
+      }
+
+      if (!user) return res.status(401).json({ error: 'Credenciales incorrectas' });
+
+      const token = crypto.randomBytes(32).toString('hex');
+      sessions.set(token, { userId: user.id, role: user.role });
+      res.json({ token, name: user.name, role: user.role });
+    } catch (error) {
+      console.error('Login error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
+  app.post('/api/auth/logout', authMiddleware, (req: any, res) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) sessions.delete(token);
+    res.json({ message: 'Logged out' });
+  });
+
+  // --- Protected: Gemini document analysis (server-side — key stays secret) ---
+
+  app.post('/api/analyze', authMiddleware, async (req, res) => {
+    const { fileData, mimeType } = req.body;
+    if (!fileData) return res.status(400).json({ error: 'fileData requerido' });
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'Gemini API key no configurada' });
+
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const model = 'gemini-2.0-flash';
+
+      const systemInstruction = `
+        Actúa como un Socio de Impuestos Senior y Auditor de Cumplimiento Legal experto en el régimen tributario de Ecuador.
+        Tu misión es realizar un análisis EXHAUSTIVO, FÁCTICO y REAL del documento adjunto.
+
+        INSTRUCCIONES DE EXTRACCIÓN CRÍTICAS:
+        1. ENTIDAD EMISORA (authority): Identifica la institución principal (ej. Servicio de Rentas Internas, IESS, etc.).
+        2. DEPARTAMENTO/UNIDAD (department): Identifica la unidad específica (ej. Dirección Nacional de Grandes Contribuyentes).
+        3. FECHA DE NOTIFICACIÓN: Busca la fecha legal de notificación. Devuélvela en formato YYYY-MM-DD.
+        4. TRÁMITE (trarniteNumber): Extrae el número de expediente o resolución.
+        5. PLAZO (daysLimit): Identifica el número de días otorgados.
+        6. TIPO DE DÍAS (dayType): Identifica si son "Días hábiles" o "Días calendario".
+
+        ESTRUCTURA PARA 'summaryEs':
+        A. ENTIDAD EMISORA Y NATURALEZA
+        B. RESUMEN EJECUTIVO
+        C. OBLIGACIONES Y REQUERIMIENTOS
+        D. BASE LEGAL Y ANÁLISIS TÉCNICO
+        E. CALENDARIO DE PROCEDIMIENTOS
+        F. MATRIZ DE RIESGOS
+        G. IMPACTO ESTRATÉGICO
+      `;
+
+      const parts: any[] = mimeType
+        ? [{ inlineData: { data: fileData, mimeType } }]
+        : [{ text: `Context:\n${fileData}` }];
+
+      const response = await ai.models.generateContent({
+        model,
+        contents: { parts },
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              authority: { type: Type.STRING },
+              department: { type: Type.STRING },
+              company: { type: Type.STRING },
+              notificationDate: { type: Type.STRING },
+              emissionDate: { type: Type.STRING },
+              daysLimit: { type: Type.NUMBER },
+              dayType: { type: Type.STRING },
+              trarniteNumber: { type: Type.STRING },
+              title: { type: Type.STRING },
+              summaryEs: { type: Type.STRING },
+              summaryCn: { type: Type.STRING },
+              activities: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ['authority', 'department', 'summaryEs', 'summaryCn', 'trarniteNumber']
+          }
+        }
+      });
+
+      if (response.text) {
+        return res.json(JSON.parse(response.text.trim()));
+      }
+      res.status(500).json({ error: 'Respuesta vacía del modelo' });
+    } catch (error) {
+      console.error('Gemini analysis error:', error);
+      res.status(500).json({ error: 'Error en análisis de documento' });
+    }
+  });
+
+  // --- Protected: Documents CRUD ---
+
+  app.get('/api/documents', authMiddleware, async (req, res) => {
     try {
       if (useMemoryFallback) return res.json(memoryDocs);
       const [rows]: any = await pool!.query('SELECT * FROM documents ORDER BY created_at DESC');
@@ -100,7 +252,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/documents/:id', async (req, res) => {
+  app.get('/api/documents/:id', authMiddleware, async (req, res) => {
     try {
       if (useMemoryFallback) {
         const doc = memoryDocs.find(d => d.id === req.params.id);
@@ -115,7 +267,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/documents', async (req, res) => {
+  app.post('/api/documents', authMiddleware, async (req, res) => {
     const doc = req.body;
     try {
       if (useMemoryFallback) {
@@ -123,8 +275,17 @@ async function startServer() {
         return res.status(201).json({ message: 'Created (Memory)' });
       }
       await pool!.query(
-        'INSERT INTO documents (id, title, trarnite_number, authority, notification_date, days_limit, day_type, due_date, status, summary_es, summary_cn, file_name, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [doc.id, doc.title, doc.trarniteNumber, doc.authority, doc.notificationDate, doc.daysLimit, doc.dayType, doc.dueDate, doc.status, doc.summaryEs, doc.summaryCn, doc.fileName, doc.createdBy]
+        `INSERT INTO documents
+          (id, title, trarnite_number, company_id, authority, department,
+           notification_date, days_limit, day_type, due_date, status,
+           summary_es, summary_cn, file_name, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          doc.id, doc.title, doc.trarniteNumber, doc.companyId || null,
+          doc.authority, doc.department || null, doc.notificationDate,
+          doc.daysLimit, doc.dayType, doc.dueDate, doc.status,
+          doc.summaryEs, doc.summaryCn, doc.fileName, doc.createdBy
+        ]
       );
       res.status(201).json({ message: 'Created' });
     } catch (error) {
@@ -133,7 +294,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/documents/:id', async (req, res) => {
+  app.put('/api/documents/:id', authMiddleware, async (req, res) => {
     const doc = req.body;
     try {
       if (useMemoryFallback) {
@@ -143,8 +304,17 @@ async function startServer() {
         return res.json({ message: 'Updated (Memory)' });
       }
       await pool!.query(
-        'UPDATE documents SET title = ?, trarnite_number = ?, authority = ?, notification_date = ?, days_limit = ?, day_type = ?, due_date = ?, status = ?, summary_es = ?, summary_cn = ?, file_name = ? WHERE id = ?',
-        [doc.title, doc.trarniteNumber, doc.authority, doc.notificationDate, doc.daysLimit, doc.dayType, doc.dueDate, doc.status, doc.summaryEs, doc.summaryCn, doc.fileName, req.params.id]
+        `UPDATE documents
+         SET title = ?, trarnite_number = ?, company_id = ?, authority = ?,
+             department = ?, notification_date = ?, days_limit = ?, day_type = ?,
+             due_date = ?, status = ?, summary_es = ?, summary_cn = ?, file_name = ?
+         WHERE id = ?`,
+        [
+          doc.title, doc.trarniteNumber, doc.companyId || null, doc.authority,
+          doc.department || null, doc.notificationDate, doc.daysLimit, doc.dayType,
+          doc.dueDate, doc.status, doc.summaryEs, doc.summaryCn, doc.fileName,
+          req.params.id
+        ]
       );
       res.json({ message: 'Updated' });
     } catch (error) {
@@ -153,7 +323,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/documents/:id', async (req, res) => {
+  app.delete('/api/documents/:id', authMiddleware, async (req, res) => {
     try {
       if (useMemoryFallback) {
         memoryDocs = memoryDocs.filter(d => d.id !== req.params.id);
