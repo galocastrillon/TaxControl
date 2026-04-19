@@ -20,7 +20,7 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(cors());
+  app.use(cors({ origin: process.env.ALLOWED_ORIGIN || '*' }));
   app.use(express.json({ limit: '20mb' }));
 
   // Database Connection Pool
@@ -82,25 +82,37 @@ async function startServer() {
     createdAt: row.created_at
   });
 
-  try {
-    pool = mysql.createPool({
-      host: process.env.DB_HOST || 'localhost',
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'tax_control',
-      port: parseInt(process.env.DB_PORT || '3306'),
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-      connectTimeout: 2000
-    });
+  const poolConfig = {
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'tax_control',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    connectTimeout: 10000
+  };
 
-    await pool.getConnection();
-    console.log('✅ Connected to MariaDB successfully.');
-  } catch (error) {
-    console.warn('⚠️ Could not connect to MariaDB. Falling back to In-Memory storage.');
-    useMemoryFallback = true;
-    pool = null;
+  // Retry loop — en Docker, MariaDB puede tardar unos segundos en estar lista
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      pool = mysql.createPool(poolConfig);
+      await pool.getConnection();
+      console.log('✅ Connected to MariaDB successfully.');
+      break;
+    } catch (error) {
+      retries--;
+      pool = null;
+      if (retries === 0) {
+        console.warn('⚠️ Could not connect to MariaDB. Falling back to In-Memory storage.');
+        useMemoryFallback = true;
+      } else {
+        console.warn(`⚠️ MariaDB not ready, retrying in 3s... (${retries} attempts left)`);
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
   }
 
   // --- Session helpers: DB-backed when MariaDB is available, in-memory otherwise ---
