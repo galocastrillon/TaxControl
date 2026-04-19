@@ -70,6 +70,15 @@ CREATE TABLE contestation_files (
     file_url TEXT
 );
 
+-- Tabla de Sesiones Activas
+CREATE TABLE sessions (
+    token VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(50) REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL
+);
+
 -- Tabla de Actividades / Tareas (Checklist)
 CREATE TABLE activities (
     id VARCHAR(50) PRIMARY KEY,
@@ -98,3 +107,4 @@ CREATE INDEX idx_doc_trarnite ON documents(trarnite_number);
 CREATE INDEX idx_doc_status ON documents(status);
 CREATE INDEX idx_doc_due_date ON documents(due_date);
 CREATE INDEX idx_activity_doc ON activities(document_id);
+CREATE INDEX idx_sessions_expires ON sessions(expires_at);

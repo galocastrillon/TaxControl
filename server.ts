@@ -5,16 +5,12 @@ import dotenv from 'dotenv';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// In-memory session store: token -> { userId, role }
-const sessions = new Map<string, { userId: string; role: string }>();
 
 function hashPassword(id: string, password: string): string {
   return crypto.createHash('sha256').update(id + password).digest('hex');
@@ -30,6 +26,10 @@ async function startServer() {
   // Database Connection Pool
   let pool: mysql.Pool | null = null;
   let useMemoryFallback = false;
+
+  // In-memory session fallback: token -> { userId, role, expiresAt }
+  const memorySessions = new Map<string, { userId: string; role: string; expiresAt: Date }>();
+  const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
   let memoryDocs: any[] = [
     {
@@ -103,14 +103,67 @@ async function startServer() {
     pool = null;
   }
 
+  // --- Session helpers: DB-backed when MariaDB is available, in-memory otherwise ---
+
+  async function createSession(token: string, userId: string, role: string): Promise<void> {
+    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+    if (!useMemoryFallback && pool) {
+      await pool.query(
+        'INSERT INTO sessions (token, user_id, role, expires_at) VALUES (?, ?, ?, ?)',
+        [token, userId, role, expiresAt]
+      );
+    } else {
+      memorySessions.set(token, { userId, role, expiresAt });
+    }
+  }
+
+  async function getSession(token: string): Promise<{ userId: string; role: string } | null> {
+    if (!useMemoryFallback && pool) {
+      const [rows]: any = await pool.query(
+        'SELECT user_id, role FROM sessions WHERE token = ? AND expires_at > NOW()',
+        [token]
+      );
+      if (rows.length === 0) return null;
+      return { userId: rows[0].user_id, role: rows[0].role };
+    }
+    const s = memorySessions.get(token);
+    if (!s) return null;
+    if (s.expiresAt < new Date()) { memorySessions.delete(token); return null; }
+    return { userId: s.userId, role: s.role };
+  }
+
+  async function deleteSession(token: string): Promise<void> {
+    if (!useMemoryFallback && pool) {
+      await pool.query('DELETE FROM sessions WHERE token = ?', [token]);
+    } else {
+      memorySessions.delete(token);
+    }
+  }
+
+  // Purge expired sessions every hour
+  setInterval(async () => {
+    if (!useMemoryFallback && pool) {
+      await pool.query('DELETE FROM sessions WHERE expires_at < NOW()').catch(() => {});
+    } else {
+      const now = new Date();
+      for (const [t, s] of memorySessions.entries()) {
+        if (s.expiresAt < now) memorySessions.delete(t);
+      }
+    }
+  }, 60 * 60 * 1000);
+
   // Auth middleware — protects all /api/* except /api/health and /api/auth/*
-  const authMiddleware = (req: any, res: any, next: any) => {
+  const authMiddleware = async (req: any, res: any, next: any) => {
     const token = req.headers.authorization?.replace('Bearer ', '');
-    if (!token || !sessions.has(token)) {
+    if (!token) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const session = await getSession(token);
+      if (!session) return res.status(401).json({ error: 'Unauthorized' });
+      req.user = session;
+      next();
+    } catch {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    req.user = sessions.get(token);
-    next();
   };
 
   // --- Public routes ---
@@ -149,7 +202,7 @@ async function startServer() {
       if (!user) return res.status(401).json({ error: 'Credenciales incorrectas' });
 
       const token = crypto.randomBytes(32).toString('hex');
-      sessions.set(token, { userId: user.id, role: user.role });
+      await createSession(token, user.id, user.role);
       res.json({ token, name: user.name, role: user.role });
     } catch (error) {
       console.error('Login error:', error);
@@ -157,9 +210,9 @@ async function startServer() {
     }
   });
 
-  app.post('/api/auth/logout', authMiddleware, (req: any, res) => {
+  app.post('/api/auth/logout', authMiddleware, async (req: any, res) => {
     const token = req.headers.authorization?.replace('Bearer ', '');
-    if (token) sessions.delete(token);
+    if (token) await deleteSession(token);
     res.json({ message: 'Logged out' });
   });
 
@@ -337,8 +390,9 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
+  // Vite middleware for development — dynamic import so `vite` devDependency is never loaded in production
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
