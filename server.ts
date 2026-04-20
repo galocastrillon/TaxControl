@@ -410,9 +410,27 @@ async function startServer() {
     const port = parseInt(process.env.SMTP_PORT || '587');
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
-    const from = process.env.SMTP_FROM || user;
+    const fromEmail = process.env.SMTP_FROM || user;
+    const fromName = process.env.SMTP_FROM_NAME || 'Tax Control';
+    const from = `${fromName} <${fromEmail}>`;
+
     if (!host || !user || !pass) throw new Error('SMTP no configurado');
-    const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+
+    // Port 587 uses STARTTLS (secure:false + requireTLS:true)
+    // Port 465 uses implicit SSL (secure:true)
+    const secure = port === 465;
+
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      requireTLS: !secure,   // forzar STARTTLS en puerto 587
+      auth: { user, pass },
+      tls: {
+        // Permite certificados autofirmados (servidores Exchange corporativos)
+        rejectUnauthorized: false
+      }
+    });
     await transporter.sendMail({ from, to, subject, html });
   }
 
