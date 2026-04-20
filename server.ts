@@ -236,82 +236,92 @@ async function startServer() {
     if (!fileData) return res.status(400).json({ error: 'fileData requerido' });
 
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return res.status(503).json({ error: 'Gemini API key no configurada' });
+    if (!apiKey) return res.status(503).json({ error: 'GEMINI_API_KEY no configurada en el servidor' });
 
     try {
       const ai = new GoogleGenAI({ apiKey });
-      const model = 'gemini-2.0-flash';
 
       const systemInstruction = `
-        Actúa como un Socio de Impuestos Senior y Auditor de Cumplimiento Legal experto en el régimen tributario de Ecuador.
-        Tu misión es analizar el documento adjunto y devolver un JSON con TODOS los campos solicitados.
+        Eres un Auditor de Cumplimiento Legal y Tributario experto en Ecuador.
+        Analiza el documento adjunto y extrae TODOS los campos en el JSON requerido.
+        Si no puedes identificar un valor con certeza, usa valores por defecto razonables.
+        NO inventes información que no está en el documento.
 
-        INSTRUCCIONES DE EXTRACCIÓN:
-        1. authority: Institución emisora del documento (ej. "Servicio de Rentas Internas", "IESS", "Superintendencia de Compañías").
-        2. department: Unidad o departamento específico dentro de la institución (ej. "Dirección Nacional de Grandes Contribuyentes").
-        3. notificationDate: Fecha legal de notificación en formato YYYY-MM-DD. Si no existe, usar la fecha de emisión.
-        4. emissionDate: Fecha de emisión del documento en formato YYYY-MM-DD.
-        5. trarniteNumber: Número de expediente, resolución, oficio o trámite del documento.
-        6. title: Título breve y descriptivo del documento (máx. 120 caracteres), en español.
-        7. company: Empresa destinataria del documento. Si no se identifica claramente, usar "ECSA".
-        8. daysLimit: Número entero de días otorgados para responder. Si no se menciona plazo, usar 15.
-        9. dayType: "Días hábiles" o "Días calendario" según el documento. Por defecto "Días hábiles".
-        10. activities: Lista de acciones o requerimientos concretos que debe ejecutar el receptor.
+        CAMPOS A EXTRAER:
+        - authority: Institución emisora (ej: "Servicio de Rentas Internas", "IESS", "Superintendencia de Compañías").
+        - department: Unidad específica de la institución (ej: "Dirección Nacional de Grandes Contribuyentes").
+        - title: Título descriptivo del documento, máx 120 caracteres, en español.
+        - company: Empresa destinataria. Si no se identifica claramente usa "ECSA".
+        - trarniteNumber: Número de expediente, resolución, oficio o referencia del documento.
+        - notificationDate: Fecha de notificación en formato YYYY-MM-DD. Si no hay, usa la fecha de emisión.
+        - emissionDate: Fecha de emisión en formato YYYY-MM-DD.
+        - daysLimit: Días otorgados para responder (número entero). Si no se menciona, usar 15.
+        - dayType: Exactamente "Días hábiles" o "Días calendario". Por defecto "Días hábiles".
+        - activities: Array de strings con las acciones o requerimientos concretos.
 
-        CAMPO summaryEs (resumen ejecutivo en ESPAÑOL):
-        Redacta un resumen profesional y estructurado con estas secciones:
+        CAMPO summaryEs: Resumen ejecutivo profesional en ESPAÑOL con estas secciones:
         A. ENTIDAD EMISORA Y NATURALEZA DEL DOCUMENTO
         B. RESUMEN EJECUTIVO
         C. OBLIGACIONES Y REQUERIMIENTOS
         D. BASE LEGAL Y ANÁLISIS TÉCNICO
-        E. CALENDARIO DE PROCEDIMIENTOS Y PLAZOS
+        E. PLAZOS Y CALENDARIO DE PROCEDIMIENTOS
         F. MATRIZ DE RIESGOS
         G. IMPACTO ESTRATÉGICO Y RECOMENDACIONES
 
-        CAMPO summaryCn (resumen ejecutivo en CHINO MANDARÍN SIMPLIFICADO 简体中文):
-        Traduce y adapta el contenido del summaryEs al chino mandarín simplificado (简体中文).
-        Mantén la misma estructura de secciones pero en chino. Usa terminología legal y tributaria china equivalente.
-        El texto debe ser fluido y natural para un lector chino de negocios.
+        CAMPO summaryCn: Traducción COMPLETA del summaryEs al chino mandarín simplificado (简体中文).
+        Usa terminología legal y tributaria apropiada en chino.
+        Mantén la misma estructura de secciones: A, B, C, D, E, F, G.
       `;
 
       const parts: any[] = mimeType
         ? [{ inlineData: { data: fileData, mimeType } }]
-        : [{ text: `Context:\n${fileData}` }];
+        : [{ text: fileData }];
 
       const response = await ai.models.generateContent({
-        model,
-        contents: { parts },
+        model: 'gemini-2.0-flash',
+        contents: [{ role: 'user', parts }],
         config: {
           systemInstruction,
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              authority: { type: Type.STRING },
-              department: { type: Type.STRING },
-              company: { type: Type.STRING },
+              authority:        { type: Type.STRING },
+              department:       { type: Type.STRING },
+              company:          { type: Type.STRING },
               notificationDate: { type: Type.STRING },
-              emissionDate: { type: Type.STRING },
-              daysLimit: { type: Type.NUMBER },
-              dayType: { type: Type.STRING },
-              trarniteNumber: { type: Type.STRING },
-              title: { type: Type.STRING },
-              summaryEs: { type: Type.STRING },
-              summaryCn: { type: Type.STRING },
-              activities: { type: Type.ARRAY, items: { type: Type.STRING } }
+              emissionDate:     { type: Type.STRING },
+              daysLimit:        { type: Type.NUMBER },
+              dayType:          { type: Type.STRING },
+              trarniteNumber:   { type: Type.STRING },
+              title:            { type: Type.STRING },
+              summaryEs:        { type: Type.STRING },
+              summaryCn:        { type: Type.STRING },
+              activities:       { type: Type.ARRAY, items: { type: Type.STRING } }
             },
-            required: ['authority', 'department', 'summaryEs', 'summaryCn', 'trarniteNumber']
+            required: ['authority', 'department', 'title', 'summaryEs', 'summaryCn', 'trarniteNumber']
           }
         }
       });
 
-      if (response.text) {
-        return res.json(JSON.parse(response.text.trim()));
+      const rawText = response.text;
+      if (!rawText) {
+        console.error('Gemini returned empty response');
+        return res.status(500).json({ error: 'El modelo no devolvió respuesta. Intenta con otro documento.' });
       }
-      res.status(500).json({ error: 'Respuesta vacía del modelo' });
-    } catch (error) {
-      console.error('Gemini analysis error:', error);
-      res.status(500).json({ error: 'Error en análisis de documento' });
+
+      // Strip markdown code blocks if present
+      const clean = rawText.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+      try {
+        return res.json(JSON.parse(clean));
+      } catch {
+        console.error('JSON parse failed. Raw Gemini response:', rawText.slice(0, 500));
+        return res.status(500).json({ error: 'Error al interpretar respuesta del modelo' });
+      }
+    } catch (error: any) {
+      console.error('Gemini analysis error:', error?.message || error);
+      const msg = error?.message || 'Error en análisis de documento';
+      return res.status(500).json({ error: msg.includes('API key') ? 'API key de Gemini inválida' : msg });
     }
   });
 

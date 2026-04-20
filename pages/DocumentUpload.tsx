@@ -277,10 +277,12 @@ const DocumentUpload: React.FC = () => {
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-10">
         {!isEditing && (
           <div className="p-8 border-b border-gray-200 bg-gray-50 text-center">
-            <input type="file" id="fileUpload" className="hidden" accept="application/pdf,image/*" onChange={handleFileChange} />
-            <label htmlFor="fileUpload" className="cursor-pointer flex flex-col items-center border-2 border-dashed rounded-xl p-8 hover:border-primary transition-all">
-                {isAnalyzing ? <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" /> : <Upload className="w-12 h-12 text-gray-400 mb-4" />}
-                <span className="text-lg font-medium text-gray-700">{isAnalyzing ? t.analyzing : file ? file.name : t.uploadFile}</span>
+            <input type="file" id="fileUpload" className="hidden" accept="application/pdf,image/*" onChange={handleFileChange} disabled={isAnalyzing} />
+            <label htmlFor="fileUpload" className={`cursor-pointer flex flex-col items-center border-2 border-dashed rounded-xl p-8 transition-all ${isAnalyzing ? 'border-primary bg-blue-50 cursor-not-allowed' : 'hover:border-primary'}`}>
+                {isAnalyzing
+                  ? <><Loader2 className="w-12 h-12 text-primary animate-spin mb-4" /><span className="text-lg font-semibold text-primary">{t.analyzing}</span><span className="text-xs text-gray-400 mt-1">Esto puede tardar 15-30 segundos...</span></>
+                  : <><Upload className="w-12 h-12 text-gray-400 mb-4" /><span className="text-lg font-medium text-gray-700">{file ? file.name : t.uploadFile}</span></>
+                }
             </label>
             {analyzeError && (
               <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-center">
