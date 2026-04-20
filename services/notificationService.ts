@@ -1,39 +1,40 @@
-
 import { Document } from '../types';
-import { displayDate } from '../constants';
 
 export interface NotificationResponse {
   success: boolean;
   message: string;
-  recipient: string;
+  recipients: number;
 }
 
-/**
- * Simula el envío de una notificación por correo electrónico basada en la configuración SMTP.
- * En una aplicación productiva, este servicio llamaría a un endpoint de backend o API de terceros.
- */
 export const sendNewDocumentNotification = async (doc: Document): Promise<NotificationResponse | null> => {
-  const smtpConfigStr = localStorage.getItem('tax_control_smtp');
-  const autoNotify = localStorage.getItem('tax_control_auto_notify') === 'true';
+  const autoNotify = localStorage.getItem('tax_control_auto_notify') !== 'false';
+  if (!autoNotify) return null;
 
-  if (!autoNotify || !smtpConfigStr) return null;
+  try {
+    const token = localStorage.getItem('auth_token');
+    const res = await fetch('/api/notify/new-document', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ doc })
+    });
 
-  const smtpConfig = JSON.parse(smtpConfigStr);
-  const recipient = smtpConfig.testEmail || 'admin@corriente.com.ec';
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.warn('[Email] No se pudo enviar notificación:', err.error || res.status);
+      return null;
+    }
 
-  // Simulamos el proceso de conexión y envío
-  console.log(`%c[SMTP] Iniciando conexión con ${smtpConfig.host}:${smtpConfig.port}...`, 'color: #3B82F6; font-weight: bold;');
-  console.log(`%c[SMTP] Autenticando como ${smtpConfig.user}...`, 'color: #3B82F6;');
-  
-  // Simulamos latencia de red
-  await new Promise(resolve => setTimeout(resolve, 2000));
-
-  console.log(`%c[SMTP] Enviando correo a: ${recipient}`, 'color: #10B981; font-weight: bold;');
-  console.log(`%c[SMTP] Asunto: NUEVO TRÁMITE REGISTRADO - ${doc.trarniteNumber}`, 'color: #10B981;');
-
-  return {
-    success: true,
-    message: `Notificación enviada con éxito vía ${smtpConfig.host}`,
-    recipient: recipient
-  };
+    const data = await res.json();
+    return {
+      success: true,
+      message: `Notificación enviada a ${data.recipients} usuario(s)`,
+      recipients: data.recipients
+    };
+  } catch (error) {
+    console.warn('[Email] Error al enviar notificación:', error);
+    return null;
+  }
 };

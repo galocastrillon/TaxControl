@@ -6,6 +6,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
+import nodemailer from 'nodemailer';
 
 dotenv.config();
 
@@ -401,6 +402,140 @@ async function startServer() {
       res.status(500).json({ error: 'Internal Server Error' });
     }
   });
+
+  // --- Email helper ---
+
+  async function sendEmail(to: string | string[], subject: string, html: string): Promise<void> {
+    const host = process.env.SMTP_HOST;
+    const port = parseInt(process.env.SMTP_PORT || '587');
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    const from = process.env.SMTP_FROM || user;
+    if (!host || !user || !pass) throw new Error('SMTP no configurado');
+    const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+    await transporter.sendMail({ from, to, subject, html });
+  }
+
+  async function getAllUserEmails(): Promise<string[]> {
+    if (useMemoryFallback) return memoryUsers.map(u => u.email);
+    const [rows]: any = await pool!.query('SELECT email FROM users');
+    return rows.map((r: any) => r.email);
+  }
+
+  // --- Protected: Email notifications ---
+
+  // Called by frontend when a new document is uploaded
+  app.post('/api/notify/new-document', authMiddleware, async (req, res) => {
+    const { doc } = req.body;
+    if (!doc) return res.status(400).json({ error: 'doc requerido' });
+    try {
+      const emails = await getAllUserEmails();
+      const subject = `📄 Nuevo trámite registrado: ${doc.trarniteNumber}`;
+      const html = `
+        <div style="font-family:sans-serif;max-width:600px;margin:auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+          <div style="background:#3B82F6;padding:24px;color:white">
+            <h2 style="margin:0">Nuevo Trámite Registrado</h2>
+            <p style="margin:4px 0 0;opacity:.85;font-size:14px">Tax Control — ECSA</p>
+          </div>
+          <div style="padding:24px">
+            <table style="width:100%;border-collapse:collapse;font-size:14px">
+              <tr><td style="padding:8px 0;color:#6b7280;width:140px">Trámite #</td><td style="font-weight:600">${doc.trarniteNumber}</td></tr>
+              <tr><td style="padding:8px 0;color:#6b7280">Título</td><td>${doc.title}</td></tr>
+              <tr><td style="padding:8px 0;color:#6b7280">Autoridad</td><td>${doc.authority}</td></tr>
+              <tr><td style="padding:8px 0;color:#6b7280">Notificación</td><td>${doc.notificationDate}</td></tr>
+              <tr><td style="padding:8px 0;color:#6b7280">Vencimiento</td><td style="color:#EF4444;font-weight:700">${doc.dueDate}</td></tr>
+            </table>
+            <div style="margin-top:20px;padding:16px;background:#FFF7ED;border-left:4px solid #F59E0B;border-radius:4px;font-size:13px">
+              <strong>Plazo:</strong> ${doc.daysLimit} ${doc.dayType}
+            </div>
+          </div>
+          <div style="padding:16px 24px;background:#f9fafb;font-size:12px;color:#9ca3af;text-align:center">
+            Tax Control · ECSA © ${new Date().getFullYear()}
+          </div>
+        </div>`;
+      await sendEmail(emails, subject, html);
+      res.json({ success: true, recipients: emails.length });
+    } catch (error: any) {
+      console.error('Error sending new-document email:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Check expiring docs and email all users — called by the daily scheduler and optionally manually
+  async function sendExpiringAlerts(): Promise<void> {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      let expiringDocs: any[] = [];
+      if (useMemoryFallback) {
+        expiringDocs = memoryDocs.filter(d =>
+          d.dueDate >= today && d.dueDate <= in7Days &&
+          d.status !== 'Completado' && d.status !== 'Vencido'
+        );
+      } else {
+        const [rows]: any = await pool!.query(
+          `SELECT * FROM documents WHERE due_date BETWEEN ? AND ? AND status NOT IN ('Completado','Vencido')`,
+          [today, in7Days]
+        );
+        expiringDocs = rows.map(mapDocToFrontend);
+      }
+
+      if (expiringDocs.length === 0) return;
+
+      const emails = await getAllUserEmails();
+      const rows = expiringDocs.map(d => `
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px">${d.trarniteNumber}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px">${d.title}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px">${d.authority}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#EF4444;font-weight:700">${d.dueDate}</td>
+        </tr>`).join('');
+
+      const html = `
+        <div style="font-family:sans-serif;max-width:680px;margin:auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+          <div style="background:#EF4444;padding:24px;color:white">
+            <h2 style="margin:0">⚠️ Alerta de Vencimientos</h2>
+            <p style="margin:4px 0 0;opacity:.85;font-size:14px">${expiringDocs.length} trámite(s) vencen en los próximos 7 días</p>
+          </div>
+          <div style="padding:24px">
+            <table style="width:100%;border-collapse:collapse">
+              <thead>
+                <tr style="background:#f9fafb">
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase">Trámite #</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase">Título</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase">Autoridad</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase">Vencimiento</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+          <div style="padding:16px 24px;background:#f9fafb;font-size:12px;color:#9ca3af;text-align:center">
+            Tax Control · ECSA © ${new Date().getFullYear()}
+          </div>
+        </div>`;
+
+      await sendEmail(emails, `⚠️ ${expiringDocs.length} trámite(s) vencen en ≤7 días`, html);
+      console.log(`✅ Alerta de vencimientos enviada a ${emails.length} usuario(s).`);
+    } catch (error) {
+      console.error('Error en sendExpiringAlerts:', error);
+    }
+  }
+
+  // Trigger manually from admin panel
+  app.post('/api/notify/check-expiring', authMiddleware, async (req, res) => {
+    try {
+      await sendExpiringAlerts();
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Daily scheduler: runs once on startup then every 24h
+  sendExpiringAlerts();
+  setInterval(sendExpiringAlerts, 24 * 60 * 60 * 1000);
 
   // Vite middleware for development — dynamic import so `vite` devDependency is never loaded in production
   if (process.env.NODE_ENV !== 'production') {

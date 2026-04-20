@@ -92,7 +92,9 @@ const INITIAL_DOCS: Document[] = [
 
 export const getDocuments = async (): Promise<Document[]> => {
     try {
-        const response = await fetch('/api/documents');
+        const response = await fetch('/api/documents', {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}` }
+        });
         if (!response.ok) throw new Error('Failed to fetch documents');
         return await response.json();
     } catch (error) {
@@ -105,7 +107,10 @@ export const saveDocument = async (doc: Document) => {
     try {
         const response = await fetch('/api/documents', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
+            },
             body: JSON.stringify(doc)
         });
         if (!response.ok) throw new Error('Failed to save document');
@@ -118,7 +123,10 @@ export const updateDocument = async (updatedDoc: Document) => {
     try {
         const response = await fetch(`/api/documents/${updatedDoc.id}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
+            },
             body: JSON.stringify(updatedDoc)
         });
         if (!response.ok) throw new Error('Failed to update document');
@@ -130,7 +138,8 @@ export const updateDocument = async (updatedDoc: Document) => {
 export const deleteDocument = async (id: string) => {
     try {
         const response = await fetch(`/api/documents/${id}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}` }
         });
         if (!response.ok) throw new Error('Failed to delete document');
     } catch (error) {
