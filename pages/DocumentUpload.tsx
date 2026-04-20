@@ -92,6 +92,7 @@ const DocumentUpload: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [fileContentUrl, setFileContentUrl] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notificationToast, setNotificationToast] = useState<NotificationResponse | null>(null);
 
@@ -186,18 +187,24 @@ const DocumentUpload: React.FC = () => {
 
   const analyzeFile = async (selectedFile: File, dataUrl: string) => {
     setIsAnalyzing(true);
+    setAnalyzeError(null);
     try {
         const base64Data = dataUrl.split(',')[1];
         const result = await analyzeDocumentText(base64Data, selectedFile.type);
-        setAuthority(result.authority || '');
-        setDepartment(result.department || '');
-        setTrarniteNumber(result.trarniteNumber || '');
+        if (result.authority) setAuthority(result.authority);
+        if (result.department) setDepartment(result.department);
+        if (result.trarniteNumber) setTrarniteNumber(result.trarniteNumber);
         setTitle(result.title || selectedFile.name);
         if (result.notificationDate) setNotificationDate(result.notificationDate);
         if (result.daysLimit) setDaysLimit(result.daysLimit);
-        setSummaryEs(result.summaryEs || '');
-        setSummaryCn(result.summaryCn || '');
-    } catch (error) { console.error(error); } finally { setIsAnalyzing(false); }
+        if (result.summaryEs) setSummaryEs(result.summaryEs);
+        if (result.summaryCn) setSummaryCn(result.summaryCn);
+    } catch (error: any) {
+        setAnalyzeError(error.message || 'Error al analizar el documento con IA');
+        console.error(error);
+    } finally {
+        setIsAnalyzing(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -275,6 +282,11 @@ const DocumentUpload: React.FC = () => {
                 {isAnalyzing ? <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" /> : <Upload className="w-12 h-12 text-gray-400 mb-4" />}
                 <span className="text-lg font-medium text-gray-700">{isAnalyzing ? t.analyzing : file ? file.name : t.uploadFile}</span>
             </label>
+            {analyzeError && (
+              <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-center">
+                ⚠️ {analyzeError}
+              </div>
+            )}
           </div>
         )}
 

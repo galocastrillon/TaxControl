@@ -244,24 +244,34 @@ async function startServer() {
 
       const systemInstruction = `
         Actúa como un Socio de Impuestos Senior y Auditor de Cumplimiento Legal experto en el régimen tributario de Ecuador.
-        Tu misión es realizar un análisis EXHAUSTIVO, FÁCTICO y REAL del documento adjunto.
+        Tu misión es analizar el documento adjunto y devolver un JSON con TODOS los campos solicitados.
 
-        INSTRUCCIONES DE EXTRACCIÓN CRÍTICAS:
-        1. ENTIDAD EMISORA (authority): Identifica la institución principal (ej. Servicio de Rentas Internas, IESS, etc.).
-        2. DEPARTAMENTO/UNIDAD (department): Identifica la unidad específica (ej. Dirección Nacional de Grandes Contribuyentes).
-        3. FECHA DE NOTIFICACIÓN: Busca la fecha legal de notificación. Devuélvela en formato YYYY-MM-DD.
-        4. TRÁMITE (trarniteNumber): Extrae el número de expediente o resolución.
-        5. PLAZO (daysLimit): Identifica el número de días otorgados.
-        6. TIPO DE DÍAS (dayType): Identifica si son "Días hábiles" o "Días calendario".
+        INSTRUCCIONES DE EXTRACCIÓN:
+        1. authority: Institución emisora del documento (ej. "Servicio de Rentas Internas", "IESS", "Superintendencia de Compañías").
+        2. department: Unidad o departamento específico dentro de la institución (ej. "Dirección Nacional de Grandes Contribuyentes").
+        3. notificationDate: Fecha legal de notificación en formato YYYY-MM-DD. Si no existe, usar la fecha de emisión.
+        4. emissionDate: Fecha de emisión del documento en formato YYYY-MM-DD.
+        5. trarniteNumber: Número de expediente, resolución, oficio o trámite del documento.
+        6. title: Título breve y descriptivo del documento (máx. 120 caracteres), en español.
+        7. company: Empresa destinataria del documento. Si no se identifica claramente, usar "ECSA".
+        8. daysLimit: Número entero de días otorgados para responder. Si no se menciona plazo, usar 15.
+        9. dayType: "Días hábiles" o "Días calendario" según el documento. Por defecto "Días hábiles".
+        10. activities: Lista de acciones o requerimientos concretos que debe ejecutar el receptor.
 
-        ESTRUCTURA PARA 'summaryEs':
-        A. ENTIDAD EMISORA Y NATURALEZA
+        CAMPO summaryEs (resumen ejecutivo en ESPAÑOL):
+        Redacta un resumen profesional y estructurado con estas secciones:
+        A. ENTIDAD EMISORA Y NATURALEZA DEL DOCUMENTO
         B. RESUMEN EJECUTIVO
         C. OBLIGACIONES Y REQUERIMIENTOS
         D. BASE LEGAL Y ANÁLISIS TÉCNICO
-        E. CALENDARIO DE PROCEDIMIENTOS
+        E. CALENDARIO DE PROCEDIMIENTOS Y PLAZOS
         F. MATRIZ DE RIESGOS
-        G. IMPACTO ESTRATÉGICO
+        G. IMPACTO ESTRATÉGICO Y RECOMENDACIONES
+
+        CAMPO summaryCn (resumen ejecutivo en CHINO MANDARÍN SIMPLIFICADO 简体中文):
+        Traduce y adapta el contenido del summaryEs al chino mandarín simplificado (简体中文).
+        Mantén la misma estructura de secciones pero en chino. Usa terminología legal y tributaria china equivalente.
+        El texto debe ser fluido y natural para un lector chino de negocios.
       `;
 
       const parts: any[] = mimeType
