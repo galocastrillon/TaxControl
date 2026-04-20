@@ -24,6 +24,7 @@ CREATE TABLE documents (
     trarnite_number VARCHAR(100) UNIQUE NOT NULL,
     company_id VARCHAR(50) REFERENCES companies(id),
     authority VARCHAR(255) NOT NULL,
+    department VARCHAR(255),
     notification_date DATE NOT NULL,
     days_limit INTEGER DEFAULT 0,
     day_type VARCHAR(20) CHECK (day_type IN ('Días hábiles', 'Días calendario')),
@@ -69,6 +70,15 @@ CREATE TABLE contestation_files (
     file_url TEXT
 );
 
+-- Tabla de Sesiones Activas
+CREATE TABLE sessions (
+    token VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(50) REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL
+);
+
 -- Tabla de Actividades / Tareas (Checklist)
 CREATE TABLE activities (
     id VARCHAR(50) PRIMARY KEY,
@@ -82,8 +92,19 @@ CREATE TABLE activities (
     completed_at TIMESTAMP
 );
 
+-- Usuario administrador por defecto (contraseña: Password123, cambiar tras primer acceso)
+-- La contraseña se almacena como SHA256(id || password) para coincidir con la lógica del servidor
+INSERT INTO users (id, name, email, password_hash, role) VALUES (
+  'u1',
+  'Administrador',
+  'impuestos@corriente.com.ec',
+  SHA2(CONCAT('u1', 'Password123'), 256),
+  'Admin'
+);
+
 -- Índices para optimizar búsquedas
 CREATE INDEX idx_doc_trarnite ON documents(trarnite_number);
 CREATE INDEX idx_doc_status ON documents(status);
 CREATE INDEX idx_doc_due_date ON documents(due_date);
 CREATE INDEX idx_activity_doc ON activities(document_id);
+CREATE INDEX idx_sessions_expires ON sessions(expires_at);

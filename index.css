@@ -1,0 +1,4 @@
+/* Base styles — Tailwind CDN handles utility classes */
+*, *::before, *::after {
+  box-sizing: border-box;
+}

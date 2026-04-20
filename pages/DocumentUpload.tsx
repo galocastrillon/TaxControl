@@ -255,7 +255,7 @@ const DocumentUpload: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm font-bold text-gray-900">{notificationToast.message}</p>
-                <p className="text-[10px] font-medium text-gray-500 uppercase tracking-tighter">Destinatario: {notificationToast.recipient}</p>
+                <p className="text-[10px] font-medium text-gray-500 uppercase tracking-tighter">{notificationToast.recipients} destinatario(s) notificado(s)</p>
               </div>
               <CheckCircle2 className="w-5 h-5 text-secondary ml-auto" />
            </div>
