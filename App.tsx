@@ -132,6 +132,17 @@ const MainLayout: React.FC<{children: React.ReactNode}> = ({ children }) => (
 );
 
 const App: React.FC = () => {
+
+  useEffect(() => {
+    pingApi()
+      .then(data => {
+        console.log("✅ Backend conectado:", data);
+      })
+      .catch(err => {
+        console.error("❌ Error conectando al backend:", err);
+      });
+  }, []);
+
   return (
     <Router>
       <Routes>
