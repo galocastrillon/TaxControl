@@ -1,29 +1,17 @@
-import { useEffect, useState } from "react";
 
-export default function Home() {
-  const [dbStatus, setDbStatus] = useState<string>("");
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
 
-  useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL}/api/db-test`)
-      .then(res => res.json())
-      .then(data => {
-        setDbStatus(data.mariadb);
-      })
-      .catch(err => {
-        console.error(err);
-        setDbStatus("Error conectando al backend");
-      });
-  }, []);
+const container = document.getElementById('root');
 
-  return (
-    <div>
-      <h1>TaxControl</h1>
-      <p>Estado DB: {dbStatus}</p>
-    </div>
-  );
+if (!container) {
+  throw new Error('Root element not found');
 }
 
-/* ✅ ESTA ES LA LÍNEA QUE FALTABA */
-const container = document.getElementById("root");
-if (!container) {
-  throw new Error("Root element not found");
+ReactDOM.createRoot(container).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
