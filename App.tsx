@@ -10,6 +10,8 @@ import Admin from './pages/Admin';
 import Settings from './pages/Settings';
 import Alerts from './pages/Alerts';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const Login: React.FC = () => {
     const navigate = useNavigate();
     const [email, setEmail] = useState('');
