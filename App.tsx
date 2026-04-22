@@ -9,6 +9,7 @@ import DocumentDetail from './pages/DocumentDetail';
 import Admin from './pages/Admin';
 import Settings from './pages/Settings';
 import Alerts from './pages/Alerts';
+import { pingApi } from "./services/api";
 
 const API_URL = import.meta.env.VITE_API_URL;
 
