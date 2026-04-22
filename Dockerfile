@@ -2,11 +2,15 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 COPY . .
 RUN npm run build
 
 # ---- Production stage: solo dependencias de runtime + dist compilado ----
+FROM caddy:alpine
+COPY --from=builder /app/dist /usr/share/caddy
+COPY Caddyfile /etc/caddy/Caddyfile
+
 FROM node:22-alpine AS runner
 WORKDIR /app
 
