@@ -1,6 +1,7 @@
 
 import { Document, DocStatus, DayType, UserRole, User, Activity, Contestation } from './types';
 import { FileText, Clock, AlertTriangle } from 'lucide-react';
+const API_URL = import.meta.env.VITE_API_URL;
 
 export const ECUADOR_HOLIDAYS_2025 = [
     '2025-01-01', '2025-03-03', '2025-03-04', '2025-04-18', '2025-05-01', 
@@ -90,7 +91,7 @@ const INITIAL_DOCS: Document[] = [
   }
 ];
 
-export const getDocuments = async (): Promise<Document[]> => {
+/*export const getDocuments = async (): Promise<Document[]> => {
     try {
         const response = await fetch('/api/documents', {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}` }
@@ -101,8 +102,21 @@ export const getDocuments = async (): Promise<Document[]> => {
         console.error('Error fetching documents:', error);
         return [];
     }
-};
+};*/
 
+export const getDocuments = async (): Promise<Document[]> => {
+    try {
+        const response = await fetch(`${API_URL}/api/documents`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}` }
+        });
+        if (!response.ok) throw new Error('Failed to fetch documents');
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching documents:', error);
+        return [];
+    }
+};
+/*
 export const saveDocument = async (doc: Document) => {
     try {
         const response = await fetch('/api/documents', {
@@ -118,7 +132,24 @@ export const saveDocument = async (doc: Document) => {
         console.error('Error saving document:', error);
     }
 };
+*/
 
+export const saveDocument = async (doc: Document) => {
+    try {
+        const response = await fetch(`${API_URL}/api/documents`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
+            },
+            body: JSON.stringify(doc)
+        });
+        if (!response.ok) throw new Error('Failed to save document');
+    } catch (error) {
+        console.error('Error saving document:', error);
+    }
+};
+/*
 export const updateDocument = async (updatedDoc: Document) => {
     try {
         const response = await fetch(`/api/documents/${updatedDoc.id}`, {
@@ -134,7 +165,24 @@ export const updateDocument = async (updatedDoc: Document) => {
         console.error('Error updating document:', error);
     }
 };
+*/
 
+export const updateDocument = async (updatedDoc: Document) => {
+    try {
+        const response = await fetch(`${API_URL}/api/documents/${updatedDoc.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
+            },
+            body: JSON.stringify(updatedDoc)
+        });
+        if (!response.ok) throw new Error('Failed to update document');
+    } catch (error) {
+        console.error('Error updating document:', error);
+    }
+};
+/*
 export const deleteDocument = async (id: string) => {
     try {
         const response = await fetch(`/api/documents/${id}`, {
@@ -146,7 +194,19 @@ export const deleteDocument = async (id: string) => {
         console.error('Error deleting document:', error);
     }
 };
-
+*/
+export const deleteDocument = async (id: string) => {
+    try {
+        const response = await fetch(`${API_URL}/api/documents/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}` }
+        });
+        if (!response.ok) throw new Error('Failed to delete document');
+    } catch (error) {
+        console.error('Error deleting document:', error);
+    }
+};
+*/
 export const MOCK_ACTIVITIES: Activity[] = [
   {
     id: 'a1',
