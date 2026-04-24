@@ -45,11 +45,17 @@ const Login: React.FC = () => {
         setLoading(true);
         setError('');
         try {
-            const res = await fetch('/api/auth/login', {
+            //const res = await fetch('/api/auth/login', {
+            //  method: 'POST',
+            //  headers: { 'Content-Type': 'application/json' },
+            //  body: JSON.stringify({ email, password })
+           // });
+            const res = await fetch(`${API_URL}/api/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
             });
+            
             if (res.ok) {
                 const { token } = await res.json();
                 localStorage.setItem('auth_token', token);
