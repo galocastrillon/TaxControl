@@ -206,7 +206,7 @@ export const deleteDocument = async (id: string) => {
         console.error('Error deleting document:', error);
     }
 };
-*/
+
 export const MOCK_ACTIVITIES: Activity[] = [
   {
     id: 'a1',
